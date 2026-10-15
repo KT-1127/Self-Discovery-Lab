@@ -224,6 +224,16 @@ textarea.inp{resize:vertical;line-height:1.7;font-weight:600}
 .nz-last{border-width:3px;background:var(--acc-pale)}
 .cmp{margin-top:20px;padding-top:14px;border-top:2px dashed var(--line)}
 .cmp .chip img{display:inline-block}
+.cmp-vs{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:10px;align-items:stretch}
+.cmp-box{background:var(--acc-pale);border-radius:14px;padding:10px 14px;min-width:0}
+.cmp-box h4{font:900 12px/1.4 var(--f-body);letter-spacing:.06em;color:var(--ink2);margin-bottom:4px}
+.cmp-wish{font-weight:900;line-height:1.6}
+.cmp-wish.empty{font-weight:700;font-size:13px;color:var(--ink2)}
+.cmp-vals{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;font-weight:900;font-size:14px}
+.cmp-vals li{display:flex;align-items:center;gap:6px}
+.cmp-vals img{width:22px;height:22px}
+.cmp-eq{align-self:center;font:900 20px/1 var(--f-body);color:var(--ink2)}
+@media (max-width:560px){.cmp-vs{grid-template-columns:minmax(0,1fr)}.cmp-eq{justify-self:center;transform:rotate(90deg)}}
 .gate{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px}
 .gate-art{width:140px;height:140px}
 .gate-h{font:400 clamp(28px,6vw,40px)/1.2 var(--f-disp)}
@@ -243,6 +253,7 @@ textarea.inp{resize:vertical;line-height:1.7;font-weight:600}
 .sh-emb{width:120px;height:120px;flex:none}
 .sh-name{font:400 clamp(28px,5vw,42px)/1.2 var(--f-disp);margin:2px 0 6px}
 .sh-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:12px;width:100%;text-align:left}
+.sh-grid.sh-one{grid-template-columns:minmax(0,1fr)}
 .sh-box{background:var(--acc-pale);border:2px solid var(--ink);border-radius:16px;padding:10px 14px;min-width:0}
 .sh-box h4{font:900 12px/1.4 var(--f-body);letter-spacing:.06em;color:var(--ink2);margin-bottom:4px}
 .sh-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
@@ -765,9 +776,12 @@ function compute(){
     const fSty=j.style.reduce((s,v,k)=>s+1-Math.abs(v-S.style[k])/4,0)/4;
     const fFld=S.fields.length ? (j.fields.some(f=>S.fields.includes(f))?1:0) : 0.5;
     const total=.52*fInt+.15*fPer+.12*fVal+.12*fSty+.09*fFld;
-    return {...j,total,score:Math.round(total*100)};
+    return {...j,total};
   }).sort((a,b)=>b.total-a.total);
-  jobs.forEach((j,k)=>j.rank=k+1);
+  // 表示用の％（順位は total のまま）。合計はTOP5でも0.65〜0.8に集まり僅差になるので、
+  // 1位は 0.30→0%・0.85→100% に引きのばし、2位以下は1位との差を約4倍に広げる（差が大きいほどゆるやかに）
+  const topT=jobs[0].total, topD=Math.min(99,Math.max(5,Math.round((topT-.30)/.55*100))), G=4;
+  jobs.forEach((j,k)=>{ const d=(topT-j.total)/.55*100; j.rank=k+1; j.score=Math.max(5,Math.round(topD-d*G/(1+d*G/60))); });
   R={fs,tr,tkey,type:TYPES[tkey],emb:IMG["em_"+tkey]||IMG.discover,top6,ri,riRank,riFlat,jobs,gap};
   R.hopes=S.hopes.map(h=>h.trim()).filter(Boolean).map(h=>{ const j=findJob(h); return {q:h, job:j?jobs.find(x=>x.id===j.id):null}; });
   return R;
@@ -938,29 +952,36 @@ function confetti(){ const cols=["#ffc21a","#ff5c93","#4a94ff","#22c07a","#7a5cf
 const thinkHead=(n,title,desc)=>`<div class="sec-h"><span class="think-no">考えて<br>みよう<b>${n}</b></span><div><h2>${title}</h2><p>${desc}</p></div></div>`;
 function nextGuard(btn,hint,ok,msg){ btn.disabled=!ok; hint.textContent=ok?"":msg; }
 
-function vPResult(){
-  app.className="wrap";
+function typeCardHTML(lead,party){
   const t=R.type;
-  app.innerHTML=`
+  return `
   <section class="card reveal">
     <div class="rv-art"><div class="burst"></div><img src="${R.emb}" alt="${t.name}をあらわすイラスト"></div>
     <div class="rv-text">
-      <p class="hand" style="color:var(--ink2)">STEP 1 完了！ あなたの性格タイプは…</p>
+      <p class="hand" style="color:var(--ink2)">${lead}</p>
       <h1 class="rv-name">${t.name}</h1>
       <p class="rv-catch">${t.catch}</p>
       <p class="rv-desc">${t.desc}</p>
       <div class="chips">${t.str.map((s,k)=>`<span class="chip"><i style="--c:${["var(--yellow)","var(--pink)","var(--sky)"][k]}"></i>${s}</span>`).join("")}</div>
       <div class="duo"><div class="box"><h4>グループでの役わり</h4><p>${t.role}</p></div><div class="box"><h4>のびしろポイント</h4><p>${t.grow}</p></div></div>
     </div>
-    ${REDUCED?"":`<div class="confetti" aria-hidden="true">${confetti()}</div>`}
-  </section>
+    ${party && !REDUCED?`<div class="confetti" aria-hidden="true">${confetti()}</div>`:""}
+  </section>`;
+}
+function top6HTML(){
+  return `
   <section class="card">
     <div class="sec-h"><img src="${IMG.crown}" alt=""><div><h2>あなたの強み TOP6</h2><p>36問の答えから、とくに光っていた力を6つ選びました。いちばん上が No.1 の強みです。${R.top6[0].score===R.top6[5].score?"（6つとも同じくらいの高さだったので、順位は目安です）":""}</p></div></div>
     <div class="st-grid">
       <div class="cv cv-str"><canvas data-chart="str" role="img" aria-label="強みTOP6のレーダーチャート"></canvas></div>
       <ol class="st-list">${R.top6.map(x=>`<li><i class="rk r${x.rank}">${x.rank}</i><div><b>${x.f.name}</b><span>${x.f.desc}</span></div></li>`).join("")}</ol>
     </div>
-  </section>
+  </section>`;
+}
+
+function vPResult(){
+  app.className="wrap";
+  app.innerHTML=`${typeCardHTML("STEP 1 完了！ あなたの性格タイプは…",true)}${top6HTML()}
   <section class="card think">
     ${thinkHead("①","「たしかに！」と思う強みは？","TOP6の中から1つ選んで、その力が出た場面を書こう。見せ合いタイムで友達に話します。")}
     <div class="pick" id="t1pick">${R.top6.map(x=>`<button data-k="${x.f.k}" class="${S.t1k===x.f.k?"on":""}" aria-pressed="${S.t1k===x.f.k}">${x.f.name}</button>`).join("")}</div>
@@ -985,20 +1006,16 @@ function vGate(n){
   app.className="wrap";
   const f1=FACETS.find(f=>f.k===S.t1k);
   const sv=k=>esc(S.vr[k]||"");
+  const before = n===1 ? `${typeCardHTML(`見せ合いタイム　${esc(nameOf())}の性格タイプは…`,false)}${top6HTML()}` : "";
   const body = n===1 ? `
-    <div class="sh-top"><img class="sh-emb" src="${R.emb}" alt=""><div><p class="hand" style="color:var(--ink2)">見せ合いタイム　${esc(nameOf())}</p><h1 class="sh-name">${R.type.name}</h1><p class="rv-catch">${R.type.catch}</p></div></div>
-    <div class="sh-grid">
-      <div class="sh-box"><h4>強み TOP3</h4><ol class="sh-list">${R.top6.slice(0,3).map(x=>`<li><i class="rk r${x.rank}">${x.rank}</i><b>${x.f.name}</b></li>`).join("")}</ol></div>
+    <div class="sh-grid sh-one">
       <div class="sh-box"><h4>「たしかに！」の強み</h4><p class="sh-big">${f1?f1.name:"—"}</p><p class="sh-scene">${esc(S.t1scene)}</p></div>
     </div>
     <p class="sh-talk"><b>話そう</b>①性格タイプを紹介　②強みが出た場面を話す　③友達から見たあなたの強みを聞く</p>`
   : `
-    <p class="hand" style="color:var(--ink2)">1コマ目はここまで！ 見せ合おう</p>
     <h1 class="sh-name" style="font-size:clamp(24px,4.4vw,34px)">${esc(nameOf())}の「大切な3つ」</h1>
-    <ol class="sh-vals">${S.values.map((v,k)=>`<li><img src="${IMG["v_"+v]}" alt=""><b>${k+1}. ${VAL[v].name}</b><p>${sv(v)}</p></li>`).join("")}</ol>
-    <p class="gate-q"><b>その3つを、仕事はかなえてくれるかな？</b>　次の時間に考えよう。</p>
-    <p class="note">次の時間も、この端末・このブラウザで開いてね。</p>`;
-  app.innerHTML=`
+    <ol class="sh-vals">${S.values.map((v,k)=>`<li><img src="${IMG["v_"+v]}" alt=""><b>${k+1}. ${VAL[v].name}</b><p>${sv(v)}</p></li>`).join("")}</ol>`;
+  app.innerHTML=`${before}
   <section class="card gate share">${body}
     <div class="gate-in"><label class="sr" for="gw">合言葉</label><input class="inp" id="gw" maxlength="12" placeholder="先生の合言葉" autocomplete="off"><button class="btn" id="open">先へ進む <span class="arr">→</span></button></div>
   </section>
@@ -1008,6 +1025,7 @@ function vGate(n){
   document.getElementById("open").onclick=tryOpen;
   gw.addEventListener("keydown",e=>{ if(e.key==="Enter") tryOpen(); });
   document.getElementById("bk").onclick=()=>{ dir="bwd"; go(n===1?"presult":"vals"); };
+  paint();
 }
 
 function valsHTML(){
@@ -1064,8 +1082,14 @@ function vHope(){
     </div>
     <div class="cmp">
       <p class="q-lbl">あなたの願いと「大切な3つ」は、つながっている？</p>
-      <div class="chips">${S.values.map(v=>`<span class="chip"><img src="${IMG["v_"+v]}" alt="" style="width:22px;height:22px">${VAL[v].name}</span>`).join("")}</div>
-      <div class="pick" id="lpick" style="margin-top:12px">${LINKS.map((l,k)=>`<button data-k="${k}" class="${S.link===k?"on":""}" aria-pressed="${S.link===k}">${l}</button>`).join("")}</div>
+      <div class="cmp-vs">
+        <div class="cmp-box"><h4>あなたの願い</h4><p class="cmp-wish" id="wish"></p></div>
+        <span class="cmp-eq" aria-hidden="true">⇔</span>
+        <div class="cmp-box"><h4>大切な3つ（STEP 2）</h4><ol class="cmp-vals">${S.values.map((v,k)=>`<li><img src="${IMG["v_"+v]}" alt="">${k+1}. ${VAL[v].name}</li>`).join("")}</ol></div>
+      </div>
+      <p class="q-lbl" style="margin-top:14px">くらべてみて、いちばん近いものを1つ選ぼう</p>
+      <p class="note" style="margin-bottom:8px">しっかり＝願いが3つのどれかとほぼ同じ／少し＝一部が重なる／ずれている＝重なるものがない</p>
+      <div class="pick" id="lpick">${LINKS.map((l,k)=>`<button data-k="${k}" class="${S.link===k?"on":""}" aria-pressed="${S.link===k}">${l}</button>`).join("")}</div>
       <p class="note" style="margin-top:8px">ずれていても大丈夫。それも大事な発見です。仕事以外の時間でかなえる方法もあります。</p>
     </div>
   </section>
@@ -1083,15 +1107,16 @@ function vHope(){
   </div>`;
   const btn=document.getElementById("next"), hint=document.getElementById("hint");
   const label=()=>{ const h=document.getElementById("hp0").value.trim(); document.getElementById("w0l").textContent = h ? `「${h}」になりたいのは、なぜ？` : "好きなこと（例：絵をかくこと）と、それが好きな理由は？"; };
+  const wish=()=>{ const el=document.getElementById("wish"), w=String(S.why[2]||"").trim(); el.textContent = w || "なぜなぜの3つ目を書くと、ここに出ます"; el.classList.toggle("empty",!w); };
   const sync=()=>{ const ok=S.why.every(longEnough)&&S.link!==null&&S.link!==undefined&&S.link!=="";
     nextGuard(btn,hint,ok, !S.why.every(longEnough)?"なぜなぜを3つ書いてね":"つながりを選んでね"); };
   const keepHopes=()=>{ S.hopes=[0,1,2].map(k=>document.getElementById("hp"+k).value); save(); label(); };
   [0,1,2].forEach(k=>document.getElementById("hp"+k).addEventListener("input",keepHopes));
-  [0,1,2].forEach(k=>document.getElementById("w"+k).addEventListener("input",e=>{ S.why[k]=e.target.value; save(); sync(); }));
+  [0,1,2].forEach(k=>document.getElementById("w"+k).addEventListener("input",e=>{ S.why[k]=e.target.value; save(); sync(); wish(); }));
   app.querySelectorAll("#lpick button").forEach(b=>b.onclick=()=>{ S.link=+b.dataset.k; save(); app.querySelectorAll("#lpick button").forEach(x=>{ x.classList.toggle("on",x===b); x.setAttribute("aria-pressed",x===b); }); sync(); });
   document.querySelectorAll("#fpick button").forEach(b=>b.onclick=()=>{ const k=b.dataset.k; S.fields=S.fields.includes(k)?S.fields.filter(x=>x!==k):[...S.fields,k]; save(); b.classList.toggle("on",S.fields.includes(k)); b.setAttribute("aria-pressed",S.fields.includes(k)); });
   document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{ const k=+b.dataset.k, v=+b.dataset.v; S.style[k]=v; save(); b.parentElement.querySelectorAll("button").forEach(x=>{ x.classList.toggle("on",x===b); x.setAttribute("aria-checked",x===b); }); });
-  label(); sync();
+  label(); sync(); wish();
   btn.onclick=()=>{ keepHopes(); dir="fwd";
     if(S.iAns.every(v=>v!==null)){ compute(); go("report"); } else { S.qi=Math.max(0,S.iAns.findIndex(v=>v===null)); go("iq"); } };
   document.getElementById("bk").onclick=()=>{ keepHopes(); dir="bwd"; go("vals"); };
